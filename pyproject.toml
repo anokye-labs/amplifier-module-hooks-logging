@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "amplifier-module-hooks-logging"
 version = "1.0.0"
-description = "Logging hook module for Amplifier - provides visibility into agent execution"
+description = "Reference hook module - Structured logging for Amplifier"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
