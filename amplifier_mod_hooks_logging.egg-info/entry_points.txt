@@ -1,2 +1,0 @@
-[amplifier.modules]
-hooks-logging = amplifier_mod_hooks_logging:mount
