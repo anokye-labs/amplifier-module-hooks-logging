@@ -78,18 +78,22 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
         app_logger = logging.getLogger()
         used_app_logger = False
         for h in app_logger.handlers:
-            # detect our JSONL handler by presence of emit attribute; we can't strictly check type across packages
-            if hasattr(h, "emit"):
+            # Detect JSONL handler by checking for path attribute (specific to JsonlHandler)
+            # We can't check type across packages, but JsonlHandler has a unique 'path' attribute
+            if hasattr(h, "path") and hasattr(h, "emit"):
                 used_app_logger = True
                 break
 
         try:
             if used_app_logger:
                 # attach as structured msg to root
+                logger.debug(f"Logging event {event} via app logger")
                 app_logger.info(rec)
             else:
+                logger.debug(f"Logging event {event} via fallback")
                 fallback.write(rec)
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to log event {event}: {e}")
             fallback.write(rec)
 
         return HookResult(action="continue")
@@ -115,9 +119,12 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
         "approval:required",
         "approval:granted",
         "approval:denied",
+        "content_block:start",
+        "content_block:delta",
+        "content_block:end",
     ]
     for ev in events:
-        coordinator.hooks.on(ev, handler, name="hooks-logging", priority=priority)
+        coordinator.hooks.register(ev, handler, priority=priority, name="hooks-logging")
 
     logger.info("Mounted hooks-logging (JSONL)")
     return
