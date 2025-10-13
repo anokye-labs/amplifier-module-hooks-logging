@@ -5,6 +5,7 @@ Provides visibility into agent execution through lifecycle event logging.
 ## Overview
 
 This hook module integrates with Amplifier's hook system to log all standard lifecycle events:
+
 - Session start/end
 - Tool invocations and results
 - Sub-agent spawning and completion
@@ -18,10 +19,25 @@ This hook module integrates with Amplifier's hook system to log all standard lif
 - **Flexible output** - console, file, or both
 - **Clean formatting** - timestamp, level, module, message
 
+## Prerequisites
+
+- **Python 3.11+**
+- **[UV](https://github.com/astral-sh/uv)** - Fast Python package manager
+
+### Installing UV
+
+```bash
+# macOS/Linux/WSL
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
 ## Installation
 
 ```bash
-pip install -e ./amplifier-module-hooks-logging
+uv pip install -e ./amplifier-module-hooks-logging
 ```
 
 ## Configuration
@@ -41,27 +57,35 @@ file = "amplifier.log"   # Required if output includes "file"
 ## Log Levels
 
 ### INFO (Recommended)
+
 Shows key events without overwhelming detail:
+
 - Session lifecycle
 - Tool invocations (name only)
 - Sub-agent activity
 - Errors and warnings
 
 ### DEBUG
+
 Shows all details:
+
 - Tool arguments and results
 - Full message content
 - Provider interactions
 - All lifecycle events
 
 ### WARNING
+
 Shows only warnings and errors:
+
 - Tool failures
 - Performance issues
 - Configuration problems
 
 ### ERROR
+
 Shows only errors:
+
 - Critical failures
 - Unhandled exceptions
 
@@ -77,12 +101,12 @@ amplifier run --config test-full-features.toml --mode chat
 ## Example Output
 
 ```
-2025-10-06 12:00:00 [INFO] amplifier_mod_hooks_logging: === Session Started ===
-2025-10-06 12:00:01 [INFO] amplifier_mod_hooks_logging: Tool invoked: grep
-2025-10-06 12:00:02 [INFO] amplifier_mod_hooks_logging: Tool completed: grep ✓
-2025-10-06 12:00:05 [INFO] amplifier_mod_hooks_logging: Sub-agent spawning: architect
-2025-10-06 12:00:10 [INFO] amplifier_mod_hooks_logging: Sub-agent completed: architect
-2025-10-06 12:00:11 [INFO] amplifier_mod_hooks_logging: === Session Ended ===
+2025-10-06 12:00:00 [INFO] amplifier_module_hooks_logging: === Session Started ===
+2025-10-06 12:00:01 [INFO] amplifier_module_hooks_logging: Tool invoked: grep
+2025-10-06 12:00:02 [INFO] amplifier_module_hooks_logging: Tool completed: grep ✓
+2025-10-06 12:00:05 [INFO] amplifier_module_hooks_logging: Sub-agent spawning: architect
+2025-10-06 12:00:10 [INFO] amplifier_module_hooks_logging: Sub-agent completed: architect
+2025-10-06 12:00:11 [INFO] amplifier_module_hooks_logging: === Session Ended ===
 ```
 
 ## Philosophy Alignment
@@ -96,10 +120,29 @@ This module follows Amplifier's core principles:
 
 ## Development
 
+### Adding Dependencies
+
+```bash
+# Add runtime dependency
+uv add pydantic
+
+# Add development dependency
+uv add --dev pytest
+
+# Update dependencies
+uv lock --upgrade
+```
+
 ### Running Tests
 
 ```bash
-pytest tests/
+uv run pytest
+```
+
+### Running Tests
+
+```bash
+uv run pytest tests/
 ```
 
 ### Adding New Event Handlers
