@@ -162,10 +162,6 @@ async def on_custom_event(self, event: str, data: dict[str, Any]) -> HookResult:
     return HookResult(action="continue")
 ```
 
-## License
-
-MIT
-
 ## Contributing
 
 > [!NOTE]
