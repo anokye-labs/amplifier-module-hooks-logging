@@ -1,12 +1,13 @@
 """
 Unified JSONL logging hook.
-Writes structured logs via app-initialized logger or fallback.
+Writes structured logs to per-session event files.
 """
 
 import json
 import logging
 from datetime import UTC
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from amplifier_core import HookResult
@@ -18,32 +19,86 @@ SCHEMA = {"name": "amplifier.log", "ver": "1.0.0"}
 
 
 def _ts() -> str:
-    from datetime import timezone
-
     return datetime.now(UTC).isoformat(timespec="milliseconds")
+
+
+def _get_project_slug() -> str:
+    """Generate project slug from CWD."""
+    cwd = Path.cwd().resolve()
+    slug = str(cwd).replace("/", "-").replace("\\", "-").replace(":", "")
+    if not slug.startswith("-"):
+        slug = "-" + slug
+    return slug
+
+
+def _sanitize_for_json(value: Any) -> Any:
+    """Recursively sanitize a value to ensure JSON serializability."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+
+    if isinstance(value, dict):
+        return {k: _sanitize_for_json(v) for k, v in value.items()}
+
+    if isinstance(value, (list, tuple)):
+        return [_sanitize_for_json(item) for item in value]
+
+    # Handle objects with __dict__ (like ThinkingBlock, TextBlock)
+    if hasattr(value, "__dict__"):
+        try:
+            # Try to extract meaningful data from object
+            obj_dict = {}
+            for attr_name in dir(value):
+                if not attr_name.startswith("_"):
+                    try:
+                        attr_value = getattr(value, attr_name)
+                        if not callable(attr_value):
+                            obj_dict[attr_name] = _sanitize_for_json(attr_value)
+                    except Exception:
+                        continue
+            return obj_dict if obj_dict else str(value)
+        except Exception:
+            return str(value)
+
+    # Try str() as last resort
+    try:
+        return str(value)
+    except Exception:
+        return "<unserializable>"
 
 
 async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = None):
     config = config or {}
     priority = int(config.get("priority", 100))
-    path = config.get("path", "./amplifier.log.jsonl")
+    mode = config.get("mode", "session-only")
+    session_log_template = config.get(
+        "session_log_template", "~/.amplifier/projects/{project}/sessions/{session_id}/events.jsonl"
+    )
 
-    # Fallback file when no app logger is present
-    class _Fallback:
-        def __init__(self, path: str):
-            from pathlib import Path
-
-            self.path = Path(path)
-            self.path.parent.mkdir(parents=True, exist_ok=True)
+    # Session log writer
+    class _SessionLogger:
+        def __init__(self, template: str):
+            self.template = template
 
         def write(self, rec: dict[str, Any]):
-            try:
-                with self.path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-            except Exception:
-                pass
+            session_id = rec.get("session_id")
+            if not session_id:
+                return  # No session context, skip
 
-    fallback = _Fallback(path)
+            try:
+                project_slug = _get_project_slug()
+                log_path = Path(self.template.format(project=project_slug, session_id=session_id)).expanduser()
+
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Sanitize record to ensure JSON serializability
+                sanitized_rec = _sanitize_for_json(rec)
+
+                with log_path.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(sanitized_rec, ensure_ascii=False) + "\n")
+            except Exception as e:
+                logger.error(f"Failed to write session log: {e}")
+
+    session_logger = _SessionLogger(session_log_template)
 
     async def handler(event: str, data: dict[str, Any]) -> HookResult:
         rec = {
@@ -77,27 +132,11 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
         except Exception as e:
             rec["error"] = {"type": type(e).__name__, "msg": str(e)}
 
-        # Prefer app logger if present
-        app_logger = logging.getLogger()
-        used_app_logger = False
-        for h in app_logger.handlers:
-            # Detect JSONL handler by checking for path attribute (specific to JsonlHandler)
-            # We can't check type across packages, but JsonlHandler has a unique 'path' attribute
-            if hasattr(h, "path") and hasattr(h, "emit"):
-                used_app_logger = True
-                break
-
+        # Write to per-session log
         try:
-            if used_app_logger:
-                # attach as structured msg to root
-                logger.debug(f"Logging event {event} via app logger")
-                app_logger.info(rec)
-            else:
-                logger.debug(f"Logging event {event} via fallback")
-                fallback.write(rec)
+            session_logger.write(rec)
         except Exception as e:
             logger.error(f"Failed to log event {event}: {e}")
-            fallback.write(rec)
 
         return HookResult(action="continue")
 
