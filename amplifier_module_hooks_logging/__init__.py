@@ -33,13 +33,13 @@ def _get_project_slug() -> str:
 
 def _sanitize_for_json(value: Any) -> Any:
     """Recursively sanitize a value to ensure JSON serializability."""
-    if value is None or isinstance(value, (bool, int, float, str)):
+    if value is None or isinstance(value, bool | int | float | str):
         return value
 
     if isinstance(value, dict):
         return {k: _sanitize_for_json(v) for k, v in value.items()}
 
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [_sanitize_for_json(item) for item in value]
 
     # Handle objects with __dict__ (like ThinkingBlock, TextBlock)
@@ -69,7 +69,6 @@ def _sanitize_for_json(value: Any) -> Any:
 async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = None):
     config = config or {}
     priority = int(config.get("priority", 100))
-    mode = config.get("mode", "session-only")
     session_log_template = config.get(
         "session_log_template", "~/.amplifier/projects/{project}/sessions/{session_id}/events.jsonl"
     )
