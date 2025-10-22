@@ -67,12 +67,35 @@ Shows key events without overwhelming detail:
 
 ### DEBUG
 
-Shows all details:
+Shows all details INCLUDING detailed LLM request/response logging:
 
+**Standard Events**:
 - Tool arguments and results
 - Full message content
-- Provider interactions
 - All lifecycle events
+
+**LLM Debug Events** (requires `providers.*.config.debug: true`):
+- `llm:request:debug` - Full request sent to provider (all messages, model, parameters)
+- `llm:response:debug` - Full response from provider (content, usage, timings)
+
+**Configuration Example**:
+```yaml
+providers:
+  - module: provider-anthropic
+    config:
+      debug: true  # Enable DEBUG event emission
+      timeout: 300.0
+      api_key: ${ANTHROPIC_API_KEY}
+
+hooks:
+  - module: hooks-logging
+    config:
+      level: "DEBUG"  # Capture DEBUG events in logs
+```
+
+**Note**: DEBUG level can generate significant log volume with detailed LLM I/O. Use for development and troubleshooting only.
+
+**Log Location**: Session logs are written to `~/.amplifier/projects/<project>/sessions/<session_id>/events.jsonl`
 
 ### WARNING
 
