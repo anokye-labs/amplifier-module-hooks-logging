@@ -102,7 +102,7 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
     async def handler(event: str, data: dict[str, Any]) -> HookResult:
         rec = {
             "ts": _ts(),
-            "lvl": "INFO",  # default; may be upgraded to ERROR below
+            "lvl": data.get("lvl", "INFO"),  # Use provided level or default to INFO
             "schema": SCHEMA,
             "event": event,
         }
@@ -125,8 +125,10 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
                 ):
                     payload[k] = v
             rec.update(payload)
-            # Upgrade level based on payload
-            if (payload.get("status") == "error") or payload.get("error") or ("error" in event):
+            # Upgrade level based on payload (but don't downgrade from DEBUG)
+            if rec["lvl"] != "DEBUG" and (
+                (payload.get("status") == "error") or payload.get("error") or ("error" in event)
+            ):
                 rec["lvl"] = "ERROR"
         except Exception as e:
             rec["error"] = {"type": type(e).__name__, "msg": str(e)}
@@ -151,7 +153,9 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
         "provider:response",
         "provider:error",
         "llm:request",
+        "llm:request:debug",
         "llm:response",
+        "llm:response:debug",
         "tool:pre",
         "tool:post",
         "tool:error",
