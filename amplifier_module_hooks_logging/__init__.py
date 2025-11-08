@@ -112,7 +112,6 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
             for k, v in (data or {}).items():
                 if k in (
                     "redaction",
-                    "data",
                     "status",
                     "duration_ms",
                     "module",
@@ -124,6 +123,10 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
                     "session_id",
                 ):
                     payload[k] = v
+            # Store all event-specific data under "data" field for JSONL output
+            event_data = {k: v for k, v in (data or {}).items() if k not in payload}
+            if event_data:
+                payload["data"] = event_data
             rec.update(payload)
             # Upgrade level based on payload (but don't downgrade from DEBUG)
             if rec["lvl"] != "DEBUG" and (
