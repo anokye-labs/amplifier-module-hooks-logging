@@ -75,15 +75,17 @@ Shows all details INCLUDING detailed LLM request/response logging:
 - All lifecycle events
 
 **LLM Debug Events** (requires `providers.*.config.debug: true`):
-- `llm:request:debug` - Full request sent to provider (all messages, model, parameters)
-- `llm:response:debug` - Full response from provider (content, usage, timings)
+- `llm:request:debug` - Detailed request summary (message count, model, parameters)
+- `llm:response:debug` - Detailed response summary (content preview, usage, timings)
+- `llm:request:raw` - Complete raw request params sent to vendor API (requires `raw_debug: true`)
+- `llm:response:raw` - Complete raw response object from vendor API (requires `raw_debug: true`)
 
-**Configuration Example**:
+**Configuration Example (Standard Debug)**:
 ```yaml
 providers:
   - module: provider-anthropic
     config:
-      debug: true  # Enable DEBUG event emission
+      debug: true  # Enable standard DEBUG event emission
       timeout: 300.0
       api_key: ${ANTHROPIC_API_KEY}
 
@@ -93,7 +95,28 @@ hooks:
       level: "DEBUG"  # Capture DEBUG events in logs
 ```
 
-**Note**: DEBUG level can generate significant log volume with detailed LLM I/O. Use for development and troubleshooting only.
+**Configuration Example (Ultra-Verbose Raw Debug)**:
+```yaml
+providers:
+  - module: provider-anthropic
+    config:
+      debug: true      # Enable standard DEBUG events
+      raw_debug: true  # Enable RAW DEBUG events (complete vendor API I/O)
+      timeout: 300.0
+      api_key: ${ANTHROPIC_API_KEY}
+
+hooks:
+  - module: hooks-logging
+    config:
+      level: "DEBUG"  # Capture all DEBUG events including raw
+```
+
+**Debug Levels**:
+- `debug: false` (default) - INFO events only, no debug details
+- `debug: true` - Standard debug events with summaries and previews
+- `debug: true, raw_debug: true` - Ultra-verbose with complete raw API I/O
+
+**Note**: DEBUG level can generate significant log volume. RAW DEBUG generates extreme log volume with complete LLM request/response payloads. Use `raw_debug` only for deep debugging of provider integration issues.
 
 **Log Location**: Session logs are written to `~/.amplifier/projects/<project>/sessions/<session_id>/events.jsonl`
 
