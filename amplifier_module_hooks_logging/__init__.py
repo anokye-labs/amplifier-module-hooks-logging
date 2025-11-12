@@ -73,6 +73,9 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
         "session_log_template", "~/.amplifier/projects/{project}/sessions/{session_id}/events.jsonl"
     )
 
+    # Auto-discovery: enabled by default
+    auto_discover = config.get("auto_discover", True)
+
     # Session log writer
     class _SessionLogger:
         def __init__(self, template: str):
@@ -144,6 +147,7 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
 
         return HookResult(action="continue")
 
+    # Standard events (always logged)
     events = [
         "session:start",
         "session:end",
@@ -179,6 +183,21 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
         "content_block:delta",
         "content_block:end",
     ]
+
+    # Auto-discover module events via capability
+    if auto_discover:
+        discovered = coordinator.get_capability("observability.events") or []
+        if discovered:
+            events.extend(discovered)
+            logger.info(f"Auto-discovered {len(discovered)} module events: {discovered}")
+
+    # Add additional events from config
+    additional = config.get("additional_events", [])
+    if additional:
+        events.extend(additional)
+        logger.info(f"Added {len(additional)} configured events: {additional}")
+
+    # Register handlers for all events
     for ev in events:
         coordinator.hooks.register(ev, handler, priority=priority, name="hooks-logging")
 

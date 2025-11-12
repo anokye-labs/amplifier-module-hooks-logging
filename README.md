@@ -4,20 +4,114 @@ Provides visibility into agent execution through lifecycle event logging.
 
 ## Overview
 
-This hook module integrates with Amplifier's hook system to log all standard lifecycle events:
+This hook module integrates with Amplifier's hook system to log lifecycle events from the session and all loaded modules.
 
+**Standard Events** (always logged):
 - Session start/end
 - Tool invocations and results
 - Sub-agent spawning and completion
 - Errors and warnings
 
+**Module Events** (auto-discovered):
+- Custom lifecycle events from loaded modules
+- Module-specific operations (e.g., `skills:discovered`, `skills:loaded`)
+- Automatically detected via the `observability.events` capability
+
 ## Features
 
 - **Zero code changes required** - pure configuration
+- **Auto-discovery of module events** - modules declare observable events, logging "just works"
 - **Standard Python logging** - no external dependencies
 - **Configurable levels** - DEBUG, INFO, WARNING, ERROR
 - **Flexible output** - console, file, or both
 - **Clean formatting** - timestamp, level, module, message
+
+## Custom Event Logging
+
+### Auto-Discovery (Recommended)
+
+Modules can declare their observable lifecycle events using the `observability.events` capability. hooks-logging automatically discovers and logs these events.
+
+**Module declares events** (`amplifier-module-skills/__init__.py`):
+```python
+async def mount(coordinator, config):
+    # Declare observable events for this module
+    # Get existing list, extend, then re-register (aggregation pattern)
+    obs_events = coordinator.get_capability("observability.events") or []
+    obs_events.extend([
+        "skills:discovered",  # When skills are found
+        "skills:loaded",      # When skill loaded successfully
+        "skill:executed"      # When skill runs
+    ])
+    coordinator.register_capability("observability.events", obs_events)
+
+    # ... rest of mount logic
+```
+
+**hooks-logging auto-discovers** (zero configuration needed):
+- Queries `coordinator.get_capability("observability.events")` at mount time
+- Registers handlers for all discovered events
+- Module events logged alongside standard events
+
+**Result**: Custom module events appear in logs automatically, no loader configuration needed.
+
+### Manual Configuration
+
+For precise control, explicitly list events in configuration:
+
+```yaml
+hooks:
+  - module: hooks-logging
+    config:
+      auto_discover: false  # Disable auto-discovery
+      additional_events:
+        - "skills:discovered"
+        - "skills:loaded"
+        - "custom:my:event"
+```
+
+### Hybrid Approach
+
+Combine auto-discovery with manual additions:
+
+```yaml
+hooks:
+  - module: hooks-logging
+    config:
+      auto_discover: true  # Default: discovers module events
+      additional_events:
+        - "custom:debug:event"  # Add events not declared by modules
+```
+
+### Module Author Guide
+
+**When creating modules that emit lifecycle events:**
+
+1. **Declare your observable events** in `mount()` using the aggregation pattern:
+   ```python
+   # Get existing list, extend with your events, re-register
+   obs_events = coordinator.get_capability("observability.events") or []
+   obs_events.extend([
+       "mymodule:started",
+       "mymodule:completed"
+   ])
+   coordinator.register_capability("observability.events", obs_events)
+   ```
+
+2. **Emit events at appropriate lifecycle points**:
+   ```python
+   await coordinator.hooks.emit("mymodule:started", {"config": config})
+   # ... module logic
+   await coordinator.hooks.emit("mymodule:completed", {"status": "success"})
+   ```
+
+3. **Document your events** in module README for power users who disable auto-discovery
+
+**Benefits**:
+- ✅ Logging "just works" for users
+- ✅ No fragile coupling between module and logging config
+- ✅ Events discoverable by other observability hooks
+- ✅ Power users can still manually configure if needed
 
 ## Prerequisites
 
@@ -157,12 +251,14 @@ amplifier run --config test-full-features.toml --mode chat
 
 ## Philosophy Alignment
 
-This module follows Amplifier's core principles:
+This module follows Amplifier's kernel philosophy:
 
-- **Ruthless Simplicity**: Uses standard Python logging, no complexity
-- **Modular Design**: Self-contained, enable/disable via config
-- **Zero Abstraction**: Direct logging calls, no wrappers
-- **Separation of Concerns**: Logging logic separate from business logic
+- **Mechanism, not policy**: Provides logging mechanism; modules declare what to log (policy)
+- **Auto-discovery via capabilities**: Uses coordinator capability system for module self-declaration
+- **Ruthless simplicity**: Reuses existing hook and capability mechanisms, no new abstractions
+- **Modular design**: Modules own their observability contract; logging discovers it
+- **Zero loader coupling**: Modules declare events; logging auto-discovers; loaders configure nothing
+- **Backward compatible**: Auto-discovery default; power users can disable and configure manually
 
 ## Development
 
@@ -189,23 +285,6 @@ uv run pytest
 
 ```bash
 uv run pytest tests/
-```
-
-### Adding New Event Handlers
-
-To log additional events, register a handler in the `LoggingHook.register()` method:
-
-```python
-hooks.register("custom:event", self.on_custom_event, priority=0, name="logging:custom")
-```
-
-Then implement the handler:
-
-```python
-async def on_custom_event(self, event: str, data: dict[str, Any]) -> HookResult:
-    """Log custom event."""
-    logger.info(f"Custom event occurred: {data}")
-    return HookResult(action="continue")
 ```
 
 ## Contributing
