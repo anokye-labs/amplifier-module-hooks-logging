@@ -3,6 +3,9 @@ Unified JSONL logging hook.
 Writes structured logs to per-session event files.
 """
 
+# Amplifier module metadata
+__amplifier_module_type__ = "hook"
+
 import json
 import logging
 from datetime import UTC
