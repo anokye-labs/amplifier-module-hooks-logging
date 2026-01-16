@@ -36,30 +36,37 @@ def _get_project_slug() -> str:
 
 
 def _sanitize_for_json(value: Any) -> Any:
-    """Recursively sanitize a value to ensure JSON serializability."""
+    """Recursively sanitize a value to ensure JSON serializability.
+
+    Optimized to avoid expensive introspection on already-safe types.
+    Performance: O(n) instead of O(n×m) where m = attributes per object.
+    """
+    # Fast path for primitives
     if value is None or isinstance(value, bool | int | float | str):
         return value
 
-    if isinstance(value, dict):
-        return {k: _sanitize_for_json(v) for k, v in value.items()}
+    # Fast path for collections - test if already JSON-safe
+    if isinstance(value, (dict, list, tuple)):
+        try:
+            json.dumps(value)  # Quick serializability test
+            return value  # Already safe, skip expensive recursion
+        except (TypeError, ValueError):
+            # Contains non-JSON objects, need recursive sanitization
+            if isinstance(value, dict):
+                return {k: _sanitize_for_json(v) for k, v in value.items()}
+            return [_sanitize_for_json(item) for item in value]
 
-    if isinstance(value, list | tuple):
-        return [_sanitize_for_json(item) for item in value]
+    # Pydantic models: use model_dump() instead of dir() introspection
+    if hasattr(value, "model_dump"):
+        try:
+            return value.model_dump()
+        except Exception:
+            pass  # Fall through to __dict__ approach
 
-    # Handle objects with __dict__ (like ThinkingBlock, TextBlock)
+    # Objects: use __dict__ directly instead of dir() + getattr() loop
     if hasattr(value, "__dict__"):
         try:
-            # Try to extract meaningful data from object
-            obj_dict = {}
-            for attr_name in dir(value):
-                if not attr_name.startswith("_"):
-                    try:
-                        attr_value = getattr(value, attr_name)
-                        if not callable(attr_value):
-                            obj_dict[attr_name] = _sanitize_for_json(attr_value)
-                    except Exception:
-                        continue
-            return obj_dict if obj_dict else str(value)
+            return _sanitize_for_json(value.__dict__)
         except Exception:
             return str(value)
 
