@@ -91,6 +91,7 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
 
     # Auto-discovery: enabled by default
     auto_discover = config.get("auto_discover", True)
+    strip_raw = config.get("strip_raw", False)
 
     # Get working directory from capability (falls back to cwd for backward compatibility)
     working_dir = coordinator.get_capability("session.working_dir")
@@ -151,6 +152,8 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
                     payload[k] = v
             # Store all event-specific data under "data" field for JSONL output
             event_data = {k: v for k, v in (data or {}).items() if k not in payload}
+            if strip_raw:
+                event_data.pop("raw", None)
             if event_data:
                 payload["data"] = event_data
             rec.update(payload)
