@@ -1,0 +1,45 @@
+name: PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, ready_for_review, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, re, sys
+
+          with open(os.environ['GITHUB_EVENT_PATH'], encoding='utf-8') as handle:
+              event = json.load(handle)
+
+          title = (event['pull_request'].get('title') or '').strip()
+          blocked_patterns = (
+              re.compile(r'^\s*$'),
+              re.compile(r'(?i)^\s*\[?\s*wip\b\s*\]?[:\s-]*'),
+              re.compile(r'(?i)^\s*\[?\s*draft\b\s*\]?[:\s-]*'),
+              re.compile(r'(?i)^\s*(?:do not merge|dnm)\b'),
+              re.compile(r'(?i)^\s*(?:tmp|temp)\b[:\s-]*'),
+          )
+
+          if any(pattern.search(title) for pattern in blocked_patterns):
+              print(
+                  'Invalid PR title. Use a descriptive title and avoid empty, WIP, draft, or do-not-merge titles.',
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          print(f"PR title looks good: {title}")
+          PY
