@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 
 SCHEMA = {"name": "amplifier.log", "ver": "1.0.0"}
 
+# Per-coordinator setup key — avoids module-level shared state across sessions.
+# State is stashed on the coordinator (which is per-session) so concurrent
+# sessions cannot drain each other's config.
+_SETUP_KEY = "hooks_logging._setup"
+
 
 def _ts() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds")
@@ -81,8 +86,22 @@ def _sanitize_for_json(value: Any) -> Any:
         return "<unserializable>"
 
 
-async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = None):
-    config = config or {}
+async def _setup_and_register(
+    coordinator: ModuleCoordinator,
+    config: dict[str, Any],
+    *,
+    use_collect: bool,
+) -> None:
+    """Build session logger and handler, discover events, register hook.
+
+    Args:
+        coordinator: The session coordinator.
+        config: Resolved hook configuration dict.
+        use_collect: When True, also calls coordinator.collect_contributions()
+            to pick up events contributed via the contribution channel
+            (amplifier-core >= 1.4.1). When False, uses only the legacy
+            get_capability() path (safe for older kernels).
+    """
     priority = int(config.get("priority", 100))
     session_log_template = config.get(
         "session_log_template",
@@ -179,7 +198,7 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
     # This ensures hooks-logging automatically picks up new events added to core
     events = list(ALL_EVENTS)
 
-    # Auto-discover module events via capability
+    # Auto-discover module events via capability (existing — backward compat)
     if auto_discover:
         discovered = coordinator.get_capability("observability.events") or []
         if discovered:
@@ -187,6 +206,16 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
             logger.info(
                 f"Auto-discovered {len(discovered)} module events: {discovered}"
             )
+
+    # Auto-discover module events via collect_contributions (new — additive, same guard)
+    # Only called when use_collect=True (amplifier-core >= 1.4.1 path).
+    if auto_discover and use_collect:
+        contributions = await coordinator.collect_contributions("observability.events")
+        for contrib in contributions:
+            if isinstance(contrib, list):
+                events.extend(contrib)
+            elif isinstance(contrib, str):
+                events.append(contrib)
 
     # Add additional events from config
     additional = config.get("additional_events", [])
@@ -199,4 +228,27 @@ async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = 
         coordinator.hooks.register(ev, handler, priority=priority, name="hooks-logging")
 
     logger.info("Mounted hooks-logging (JSONL)")
-    return
+
+
+async def mount(coordinator: ModuleCoordinator, config: dict[str, Any] | None = None):
+    config = config or {}
+    if not hasattr(coordinator, "collect_contributions"):
+        # amplifier-core < 1.4.1: on_session_ready is never dispatched, so
+        # register handlers eagerly at mount() time using the legacy path.
+        logger.warning(
+            "hooks-logging: amplifier-core < 1.4.1 detected — "
+            "late-contributed events may be missed. Upgrade for full coverage."
+        )
+        await _setup_and_register(coordinator, config, use_collect=False)
+        return
+    # Store config on the coordinator so on_session_ready() can retrieve it.
+    # Using the coordinator (which is per-session) scopes state correctly —
+    # concurrent sessions cannot drain each other's config.
+    coordinator.register_capability(_SETUP_KEY, config)
+
+
+async def on_session_ready(coordinator: ModuleCoordinator) -> None:
+    config = coordinator.get_capability(_SETUP_KEY)
+    if config is None:
+        return
+    await _setup_and_register(coordinator, config, use_collect=True)
